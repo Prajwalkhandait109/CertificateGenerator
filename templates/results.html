@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generated Certificates</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Generated Certificates</h1>
+        
+        <div class="success-message">
+            <p>Certificates have been successfully generated!</p>
+        </div>
+        
+        <div class="certificates-list">
+            <h3>Generated Certificates:</h3>
+            {% if certificates %}
+                <ul>
+                {% for certificate in certificates %}
+                    <li>
+                        <a href="{{ url_for('view_file', filename=certificate) }}" target="_blank">{{ certificate }}</a>
+                        <a href="{{ url_for('download_file', filename=certificate) }}" class="download-link">Download</a>
+                    </li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p>No certificates were generated.</p>
+            {% endif %}
+        </div>
+        
+        <div class="form-group">
+            <a href="{{ url_for('index') }}" class="back-button">Generate More Certificates</a>
+            {% if certificates %}
+            <a href="{{ url_for('download_all') }}" class="download-all-button">Download All Certificates</a>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

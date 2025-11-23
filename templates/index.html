@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Certificate Generator</h1>
+        
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <p>1. Upload a CSV file containing names (first column should contain names)</p>
+            <p>2. Select a certificate template image</p>
+            <p>3. Customize the text position, font size, and color</p>
+            <p>4. Click "Generate Certificates" to create certificates for each name</p>
+        </div>
+        
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert">
+              {% for message in messages %}
+                <p>{{ message }}</p>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+        
+        <form id="certificateForm" action="{{ url_for('generate_certificates') }}" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="namesFile">Names File (CSV):</label>
+                <input type="file" id="namesFile" name="namesFile" accept=".csv,.xlsx" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="templateFile">Certificate Template:</label>
+                <input type="file" id="templateFile" name="templateFile" accept=".png,.jpg,.jpeg" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="fontSize">Font Size:</label>
+                <input type="number" id="fontSize" name="fontSize" value="60" min="10" max="200" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="textColor">Text Color:</label>
+                <input type="text" id="textColor" name="textColor" value="black" required>
+                <div class="color-preview" id="colorPreview" style="background-color: black;"></div>
+            </div>
+            
+            <div class="form-group">
+                <label>Text Position:</label>
+                <div class="position-inputs">
+                    <input type="number" id="positionX" name="positionX" placeholder="X position" value="700" required>
+                    <input type="number" id="positionY" name="positionY" placeholder="Y position" value="700" required>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="fontFamily">Font Type:</label>
+                <select id="fontFamily" name="fontFamily">
+                    <option value="Arial">Arial</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Georgia">Georgia</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="outputType">Output Format:</label>
+                <select id="outputType" name="outputType">
+                    <option value="png">PNG</option>
+                    <option value="pdf">PDF</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Preview:</label>
+                <div id="previewContainer" class="preview-container">
+                    <div id="previewPlaceholder">
+                        <p>Upload a template to see preview</p>
+                    </div>
+                    <canvas id="previewCanvas" style="display: none;"></canvas>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" id="generateBtn">Generate Certificates</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const templateInput = document.getElementById('templateFile');
+        const previewPlaceholder = document.getElementById('previewPlaceholder');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const ctx = previewCanvas.getContext('2d');
+        const positionX = document.getElementById('positionX');
+        const positionY = document.getElementById('positionY');
+        const fontSize = document.getElementById('fontSize');
+        const textColor = document.getElementById('textColor');
+        const fontFamily = document.getElementById('fontFamily');
+
+        const sampleName = 'Sample Name';
+        let bgImage = null;
+        let imgNaturalWidth = 0;
+        let imgNaturalHeight = 0;
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        // Update color preview swatch
+        document.getElementById('colorPreview').style.backgroundColor = textColor.value;
+        textColor.addEventListener('input', () => {
+            document.getElementById('colorPreview').style.backgroundColor = textColor.value;
+            drawPreview();
+        });
+
+        // Load template and draw
+        templateInput.addEventListener('change', function() {
+            if (!this.files || !this.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                bgImage = new Image();
+                bgImage.onload = function() {
+                    imgNaturalWidth = bgImage.naturalWidth;
+                    imgNaturalHeight = bgImage.naturalHeight;
+                    previewPlaceholder.style.display = 'none';
+                    previewCanvas.style.display = 'block';
+                    // Fit canvas to container
+                    const container = document.getElementById('previewContainer');
+                    previewCanvas.width = container.clientWidth;
+                    previewCanvas.height = container.clientHeight;
+                    drawPreview();
+                };
+                bgImage.src = ev.target.result;
+            };
+            reader.readAsDataURL(this.files[0]);
+        });
+
+        // Redraw on input changes
+        [positionX, positionY, fontSize, fontFamily].forEach(el => {
+            el.addEventListener('input', drawPreview);
+        });
+
+        function drawPreview() {
+            if (!bgImage) return;
+            // Clear
+            ctx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            // Compute scale to fit image inside canvas
+            const scale = Math.min(
+                previewCanvas.width / imgNaturalWidth,
+                previewCanvas.height / imgNaturalHeight
+            );
+            const drawWidth = imgNaturalWidth * scale;
+            const drawHeight = imgNaturalHeight * scale;
+            const offsetX = (previewCanvas.width - drawWidth) / 2;
+            const offsetY = (previewCanvas.height - drawHeight) / 2;
+            ctx.drawImage(bgImage, offsetX, offsetY, drawWidth, drawHeight);
+
+            // Draw text at scaled position (top-left anchor to match PIL)
+            const xScaled = offsetX + Number(positionX.value) * scale;
+            const yScaled = offsetY + Number(positionY.value) * scale;
+            ctx.font = `${Number(fontSize.value) * scale}px ${fontFamily.value}`;
+            ctx.fillStyle = textColor.value;
+            ctx.textBaseline = 'top';
+            ctx.fillText(sampleName, xScaled, yScaled);
+        }
+
+        // Drag to adjust position (top-left hitbox around text)
+        previewCanvas.addEventListener('mousedown', function(e) {
+            if (!bgImage) return;
+            const rect = previewCanvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            // Recompute current draw params
+            const scale = Math.min(
+                previewCanvas.width / imgNaturalWidth,
+                previewCanvas.height / imgNaturalHeight
+            );
+            const drawWidth = imgNaturalWidth * scale;
+            const drawHeight = imgNaturalHeight * scale;
+            const offsetX = (previewCanvas.width - drawWidth) / 2;
+            const offsetY = (previewCanvas.height - drawHeight) / 2;
+            const xScaled = offsetX + Number(positionX.value) * scale;
+            const yScaled = offsetY + Number(positionY.value) * scale;
+            ctx.font = `${Number(fontSize.value) * scale}px ${fontFamily.value}`;
+            const textWidth = ctx.measureText(sampleName).width;
+            const textHeight = Number(fontSize.value) * scale;
+            if (mouseX >= xScaled && mouseX <= xScaled + textWidth && mouseY >= yScaled && mouseY <= yScaled + textHeight) {
+                isDragging = true;
+                dragOffsetX = mouseX - xScaled;
+                dragOffsetY = mouseY - yScaled;
+            }
+        });
+
+        previewCanvas.addEventListener('mousemove', function(e) {
+            if (!isDragging || !bgImage) return;
+            const rect = previewCanvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const scale = Math.min(
+                previewCanvas.width / imgNaturalWidth,
+                previewCanvas.height / imgNaturalHeight
+            );
+            const drawWidth = imgNaturalWidth * scale;
+            const drawHeight = imgNaturalHeight * scale;
+            const offsetX = (previewCanvas.width - drawWidth) / 2;
+            const offsetY = (previewCanvas.height - drawHeight) / 2;
+            const newXScaled = mouseX - dragOffsetX;
+            const newYScaled = mouseY - dragOffsetY;
+            // Update form values in original image coordinates
+            positionX.value = Math.round((newXScaled - offsetX) / scale);
+            positionY.value = Math.round((newYScaled - offsetY) / scale);
+            drawPreview();
+        });
+
+        window.addEventListener('mouseup', function() { isDragging = false; });
+    </script>
+</body>
+</html>
