@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Generator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Certificate Generator</h1>
+        
+        <div class="instructions">
+            <h3>Instructions:</h3>
+            <p>1. Upload a CSV file containing names (first column should contain names)</p>
+            <p>2. Select a certificate template image</p>
+            <p>3. Customize the text position, font size, and color</p>
+            <p>4. Click "Generate Certificates" to create certificates for each name</p>
+        </div>
+        
+        <form id="certificateForm" action="generate.html" method="get">
+            <div class="form-group">
+                <label for="namesFile">Names File (CSV):</label>
+                <input type="file" id="namesFile" accept=".csv" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="templateFile">Certificate Template:</label>
+                <input type="file" id="templateFile" accept=".png,.jpg,.jpeg" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="outputFolder">Output Folder Name:</label>
+                <input type="text" id="outputFolder" value="certificates" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="fontSize">Font Size:</label>
+                <input type="number" id="fontSize" value="60" min="10" max="200" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="textColor">Text Color:</label>
+                <input type="text" id="textColor" value="black" required>
+                <div class="color-preview" id="colorPreview" style="background-color: black;"></div>
+            </div>
+            
+            <div class="form-group">
+                <label>Text Position:</label>
+                <div class="position-inputs">
+                    <input type="number" id="positionX" placeholder="X position" value="700" required>
+                    <input type="number" id="positionY" placeholder="Y position" value="700" required>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <button type="button" id="generateBtn">Generate Certificates</button>
+            </div>
+        </form>
+        
+        <div class="preview">
+            <h3>Template Preview</h3>
+            <img id="templatePreview" src="placeholder.png" alt="Template Preview" style="display: none;">
+            <p id="previewMessage">No template selected</p>
+        </div>
+    </div>
+
+    <script>
+        // Preview template image when selected
+        document.getElementById('templateFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = document.getElementById('templatePreview');
+                    img.src = event.target.result;
+                    img.style.display = 'block';
+                    document.getElementById('previewMessage').style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Update color preview when color input changes
+        document.getElementById('textColor').addEventListener('input', function(e) {
+            document.getElementById('colorPreview').style.backgroundColor = e.target.value;
+        });
+
+        // Handle form submission
+        document.getElementById('generateBtn').addEventListener('click', function() {
+            // In a real implementation, this would submit the form to a server-side script
+            // For now, we'll just show an alert
+            alert('In a complete implementation, this would run the Python script with your parameters.\n\nTo use this interface with the existing Python script, you would need to create a server-side component that calls the script with the provided parameters.');
+            
+            // Example command that would be executed:
+            const namesFile = document.getElementById('namesFile').files[0]?.name || 'sample_names.csv';
+            const templateFile = document.getElementById('templateFile').files[0]?.name || 'template.png';
+            const outputFolder = document.getElementById('outputFolder').value;
+            const fontSize = document.getElementById('fontSize').value;
+            const textColor = document.getElementById('textColor').value;
+            const posX = document.getElementById('positionX').value;
+            const posY = document.getElementById('positionY').value;
+            
+            const command = `python certificate_generator.py "${namesFile}" "${templateFile}" --output "${outputFolder}" --font-size ${fontSize} --color "${textColor}" --position ${posX} ${posY}`;
+            console.log('Command that would be executed:', command);
+        });
+    </script>
+</body>
+</html>
