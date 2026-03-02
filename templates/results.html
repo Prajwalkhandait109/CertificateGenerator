@@ -52,7 +52,8 @@
                         <div class="cert-name" title="{{ cert.filename }}">{{ cert.filename }}</div>
                         <div class="cert-actions">
                             {% if cert.is_image %}
-                            <a href="data:{{ cert.mime }};base64,{{ cert.b64 }}" target="_blank" class="btn-view">
+                            <a href="#" class="btn-view"
+                                onclick="viewBase64('{{ cert.mime }}', '{{ cert.b64 }}'); return false;">
                                 <span class="material-icons-round" style="font-size:0.9rem;">visibility</span> View
                             </a>
                             {% endif %}
@@ -109,6 +110,18 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+
+        function viewBase64(mime, b64Data) {
+            const byteChars = atob(b64Data);
+            const byteNumbers = new Array(byteChars.length);
+            for (let i = 0; i < byteChars.length; i++) {
+                byteNumbers[i] = byteChars.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mime });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
         }
     </script>
 </body>
