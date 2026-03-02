@@ -122,8 +122,8 @@ def create_certificates(excel_file, template_file, output_folder="certificates",
                             return ImageFont.truetype(os.path.join(root, fname), size)
 
             # 3. Final Fallback - Default PIL font
-            logger.warning("Font '%s' not found. Using default font.", name)
-            return ImageFont.load_default()
+            logger.warning("Font '%s' not found. Using default font at size %d.", name, size)
+            return ImageFont.load_default(size=size)
 
         font = load_font_family(font_family, font_size)
 
@@ -242,8 +242,8 @@ def create_certificates_in_memory(names_data, template_data,
                 for root, dirs, files in os.walk(d):
                     if fname in files:
                         return ImageFont.truetype(os.path.join(root, fname), size)
-        logger.warning("Font '%s' not found. Using default font.", name)
-        return ImageFont.load_default()
+        logger.warning("Font '%s' not found. Using default font at size %d.", name, size)
+        return ImageFont.load_default(size=size)
 
     font = load_font_family(font_family, font_size)
 
