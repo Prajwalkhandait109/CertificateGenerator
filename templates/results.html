@@ -40,7 +40,8 @@
                 <div class="cert-card">
                     {% if certificate.endswith('.png') or certificate.endswith('.jpg') or certificate.endswith('.jpeg')
                     %}
-                    <img class="cert-thumb" src="{{ url_for('view_file', filename=certificate) }}"
+                    <img class="cert-thumb"
+                        src="{{ url_for('view_file', session_id=session_id, filename=certificate) }}"
                         alt="{{ certificate }}" loading="lazy">
                     {% else %}
                     <div class="cert-thumb"
@@ -52,10 +53,12 @@
                     <div class="cert-info">
                         <div class="cert-name" title="{{ certificate }}">{{ certificate }}</div>
                         <div class="cert-actions">
-                            <a href="{{ url_for('view_file', filename=certificate) }}" target="_blank" class="btn-view">
+                            <a href="{{ url_for('view_file', session_id=session_id, filename=certificate) }}"
+                                target="_blank" class="btn-view">
                                 <span class="material-icons-round" style="font-size:0.9rem;">visibility</span> View
                             </a>
-                            <a href="{{ url_for('download_file', filename=certificate) }}" class="btn-download">
+                            <a href="{{ url_for('download_file', session_id=session_id, filename=certificate) }}"
+                                class="btn-download">
                                 <span class="material-icons-round" style="font-size:0.9rem;">download</span> Download
                             </a>
                         </div>
@@ -75,7 +78,7 @@
                     Generate More
                 </a>
                 {% if certificates %}
-                <a href="{{ url_for('download_all') }}" class="btn-primary">
+                <a href="{{ url_for('download_all', session_id=session_id) }}" class="btn-primary">
                     <span class="material-icons-round"
                         style="vertical-align:middle;margin-right:4px;font-size:1.1rem;">file_download</span>
                     Download All (ZIP)

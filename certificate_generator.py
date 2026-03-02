@@ -5,11 +5,14 @@ Reads names from Excel file and adds them to a certificate template
 """
 
 import os
+import logging
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 import sys
 import argparse
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 def create_certificates(excel_file, template_file, output_folder="certificates", 
                        font_size=60, text_color="black", position=(400, 300),
@@ -33,7 +36,7 @@ def create_certificates(excel_file, template_file, output_folder="certificates",
 
     try:
         # Read Excel file
-        print(f"Reading names from {excel_file}...")
+        logger.info("Reading names from %s...", excel_file)
 
         # Try to read Excel file, fallback to CSV
         try:
@@ -42,13 +45,13 @@ def create_certificates(excel_file, template_file, output_folder="certificates",
             else:
                 df = pd.read_excel(excel_file)
         except FileNotFoundError:
-            print(f"Error: File '{excel_file}' not found.")
+            logger.error("File '%s' not found.", excel_file)
             return
         except pd.errors.EmptyDataError:
-            print(f"Error: File '{excel_file}' is empty.")
+            logger.error("File '%s' is empty.", excel_file)
             return
         except Exception as e:
-            print(f"Error reading file '{excel_file}': {e}")
+            logger.error("Error reading file '%s': %s", excel_file, e)
             return
 
         # Get names from first column or 'name' column
@@ -61,13 +64,13 @@ def create_certificates(excel_file, template_file, output_folder="certificates",
             names = df.iloc[:, 0].dropna().tolist()
 
         if not names:
-            print("Error: No valid names found in the file.")
+            logger.error("No valid names found in the file.")
             return
 
-        print(f"Found {len(names)} names")
+        logger.info("Found %d names", len(names))
 
         # Load template image
-        print(f"Loading template from {template_file}...")
+        logger.info("Loading template from %s...", template_file)
         template = Image.open(template_file)
 
         # Try to load font (fallback to default if not found)
@@ -98,8 +101,8 @@ def create_certificates(excel_file, template_file, output_folder="certificates",
                     for f in os.listdir(local_fonts_dir):
                         if f.lower().endswith('.ttf'):
                             return ImageFont.truetype(os.path.join(local_fonts_dir, f), size)
-                except:
-                    pass
+                except OSError:
+                    logger.warning("Could not list local fonts directory")
 
             # 2. Check System Fonts (Fallbacks)
             search_dirs = [
@@ -119,13 +122,13 @@ def create_certificates(excel_file, template_file, output_folder="certificates",
                             return ImageFont.truetype(os.path.join(root, fname), size)
 
             # 3. Final Fallback - Default PIL font
-            print(f"Warning: Font '{name}' not found. Using default font.")
+            logger.warning("Font '%s' not found. Using default font.", name)
             return ImageFont.load_default()
 
         font = load_font_family(font_family, font_size)
 
         # Generate certificates
-        print("Generating certificates...")
+        logger.info("Generating certificates...")
 
         for i, name in enumerate(names, 1):
             # Create a copy of the template
@@ -154,13 +157,13 @@ def create_certificates(excel_file, template_file, output_folder="certificates",
             else:
                 cert_image.save(output_path)
                 
-            print(f"Generated certificate {i}/{len(names)}: {filename}")
+            logger.info("Generated certificate %d/%d: %s", i, len(names), filename)
 
-        print(f"\nAll certificates generated successfully!")
-        print(f"Certificates saved in: {os.path.abspath(output_folder)}")
+        logger.info("All certificates generated successfully!")
+        logger.info("Certificates saved in: %s", os.path.abspath(output_folder))
 
     except Exception as e:
-        print(f"Error: {e}")
+        logger.exception("Certificate generation error")
 
 def main():
     parser = argparse.ArgumentParser(description='Generate certificates automatically')

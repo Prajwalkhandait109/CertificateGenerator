@@ -35,6 +35,7 @@
 
             <form id="certificateForm" action="{{ url_for('generate_certificates') }}" method="post"
                 enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="two-col">
                     <!-- LEFT: Form Controls -->
                     <div class="form-column">
