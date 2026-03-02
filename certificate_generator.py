@@ -165,6 +165,116 @@ def create_certificates(excel_file, template_file, output_folder="certificates",
     except Exception as e:
         logger.exception("Certificate generation error")
 
+
+def create_certificates_in_memory(names_data, template_data,
+                                   font_size=60, text_color="black",
+                                   position=(400, 300), font_family="Arial",
+                                   output_type="png"):
+    """
+    Generate certificates entirely in memory (no disk writes).
+
+    Args:
+        names_data (bytes): Raw bytes of the CSV/XLSX file
+        template_data (bytes): Raw bytes of the template image
+        font_size, text_color, position, font_family, output_type: same as create_certificates
+
+    Returns:
+        list of (filename: str, file_bytes: bytes) tuples
+    """
+    import io as _io
+
+    # Read names from bytes
+    try:
+        try:
+            df = pd.read_csv(_io.BytesIO(names_data))
+        except Exception:
+            df = pd.read_excel(_io.BytesIO(names_data))
+    except Exception as e:
+        logger.error("Error reading names data: %s", e)
+        raise ValueError(f"Could not read names file: {e}")
+
+    if 'name' in df.columns:
+        names = df['name'].dropna().tolist()
+    elif 'Name' in df.columns:
+        names = df['Name'].dropna().tolist()
+    else:
+        names = df.iloc[:, 0].dropna().tolist()
+
+    if not names:
+        raise ValueError("No valid names found in the file.")
+
+    logger.info("Found %d names for in-memory generation", len(names))
+
+    # Load template image from bytes
+    template = Image.open(_io.BytesIO(template_data))
+
+    # Load font (reuse the same logic)
+    def load_font_family(name, size):
+        local_fonts_dir = os.path.join(os.path.dirname(__file__), 'fonts')
+        family_map = {
+            'Arial': ['arial.ttf', 'Arial.ttf', 'Roboto-Regular.ttf', 'LiberationSans-Regular.ttf'],
+            'Times New Roman': ['times.ttf', 'Times New Roman.ttf', 'LiberationSerif-Regular.ttf'],
+            'Courier New': ['cour.ttf', 'Courier New.ttf', 'LiberationMono-Regular.ttf'],
+            'Verdana': ['verdana.ttf', 'Verdana.ttf', 'DejaVuSans.ttf'],
+            'Georgia': ['georgia.ttf', 'Georgia.ttf', 'DejaVuSerif.ttf'],
+        }
+        candidates = family_map.get(name, [f"{name}.ttf", f"{name}MT.ttf"])
+        if os.path.exists(local_fonts_dir):
+            for fname in candidates:
+                path = os.path.join(local_fonts_dir, fname)
+                if os.path.exists(path):
+                    return ImageFont.truetype(path, size)
+            try:
+                for f in os.listdir(local_fonts_dir):
+                    if f.lower().endswith('.ttf'):
+                        return ImageFont.truetype(os.path.join(local_fonts_dir, f), size)
+            except OSError:
+                logger.warning("Could not list local fonts directory")
+        search_dirs = [
+            os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts'),
+            '/usr/share/fonts/truetype', '/usr/share/fonts',
+            '/System/Library/Fonts', '/Library/Fonts',
+        ]
+        for d in search_dirs:
+            if not os.path.exists(d):
+                continue
+            for fname in candidates:
+                for root, dirs, files in os.walk(d):
+                    if fname in files:
+                        return ImageFont.truetype(os.path.join(root, fname), size)
+        logger.warning("Font '%s' not found. Using default font.", name)
+        return ImageFont.load_default()
+
+    font = load_font_family(font_family, font_size)
+
+    extension = output_type.lower()
+    if extension not in ['png', 'pdf']:
+        extension = 'png'
+
+    results = []
+    for i, name in enumerate(names, 1):
+        cert_image = template.copy()
+        draw = ImageDraw.Draw(cert_image)
+        draw.text(position, str(name), fill=text_color, font=font, anchor='lt')
+
+        safe_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in str(name))
+        filename = f"{safe_name.strip()}.{extension}"
+
+        buf = _io.BytesIO()
+        if extension == 'pdf':
+            if cert_image.mode == 'RGBA':
+                cert_image = cert_image.convert('RGB')
+            cert_image.save(buf, 'PDF', resolution=100.0)
+        else:
+            cert_image.save(buf, 'PNG')
+        buf.seek(0)
+
+        results.append((filename, buf.getvalue()))
+        logger.info("Generated certificate %d/%d: %s (in-memory)", i, len(names), filename)
+
+    logger.info("All %d certificates generated in memory.", len(results))
+    return results
+
 def main():
     parser = argparse.ArgumentParser(description='Generate certificates automatically')
     parser.add_argument('excel_file', help='Path to Excel/CSV file with names')

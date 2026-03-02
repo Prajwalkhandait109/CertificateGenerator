@@ -36,13 +36,11 @@
             <!-- Certificate Grid -->
             {% if certificates %}
             <div class="cert-grid">
-                {% for certificate in certificates %}
+                {% for cert in certificates %}
                 <div class="cert-card">
-                    {% if certificate.endswith('.png') or certificate.endswith('.jpg') or certificate.endswith('.jpeg')
-                    %}
-                    <img class="cert-thumb"
-                        src="{{ url_for('view_file', session_id=session_id, filename=certificate) }}"
-                        alt="{{ certificate }}" loading="lazy">
+                    {% if cert.is_image %}
+                    <img class="cert-thumb" src="data:{{ cert.mime }};base64,{{ cert.b64 }}" alt="{{ cert.filename }}"
+                        loading="lazy">
                     {% else %}
                     <div class="cert-thumb"
                         style="display:flex;align-items:center;justify-content:center;background:var(--bg-secondary);">
@@ -51,14 +49,15 @@
                     </div>
                     {% endif %}
                     <div class="cert-info">
-                        <div class="cert-name" title="{{ certificate }}">{{ certificate }}</div>
+                        <div class="cert-name" title="{{ cert.filename }}">{{ cert.filename }}</div>
                         <div class="cert-actions">
-                            <a href="{{ url_for('view_file', session_id=session_id, filename=certificate) }}"
-                                target="_blank" class="btn-view">
+                            {% if cert.is_image %}
+                            <a href="data:{{ cert.mime }};base64,{{ cert.b64 }}" target="_blank" class="btn-view">
                                 <span class="material-icons-round" style="font-size:0.9rem;">visibility</span> View
                             </a>
-                            <a href="{{ url_for('download_file', session_id=session_id, filename=certificate) }}"
-                                class="btn-download">
+                            {% endif %}
+                            <a href="#" class="btn-download"
+                                onclick="downloadBase64('{{ cert.filename }}', '{{ cert.mime }}', '{{ cert.b64 }}'); return false;">
                                 <span class="material-icons-round" style="font-size:0.9rem;">download</span> Download
                             </a>
                         </div>
@@ -78,7 +77,8 @@
                     Generate More
                 </a>
                 {% if certificates %}
-                <a href="{{ url_for('download_all', session_id=session_id) }}" class="btn-primary">
+                <a href="#" class="btn-primary"
+                    onclick="downloadBase64('certificates.zip', 'application/zip', '{{ zip_b64 }}'); return false;">
                     <span class="material-icons-round"
                         style="vertical-align:middle;margin-right:4px;font-size:1.1rem;">file_download</span>
                     Download All (ZIP)
@@ -91,6 +91,26 @@
             Certificate Generator &mdash; Bulk certificate creation tool
         </footer>
     </div>
+
+    <script>
+        function downloadBase64(filename, mime, b64Data) {
+            const byteChars = atob(b64Data);
+            const byteNumbers = new Array(byteChars.length);
+            for (let i = 0; i < byteChars.length; i++) {
+                byteNumbers[i] = byteChars.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
 </body>
 
 </html>

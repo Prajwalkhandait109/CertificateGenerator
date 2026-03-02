@@ -1,22 +1,18 @@
 import os
 import io
-import uuid
-import time
+import base64
 import logging
 import zipfile
-import secrets
-import threading
 
 from flask import (
     Flask, render_template, request, redirect,
-    url_for, flash, send_from_directory, send_file, abort, jsonify
+    url_for, flash, send_file, abort, jsonify
 )
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
-import pandas as pd
 from dotenv import load_dotenv
 
-from certificate_generator import create_certificates
+from certificate_generator import create_certificates_in_memory
 
 # ---------------------------------------------------------------------------
 # Load environment variables from .env file (if present)
@@ -28,69 +24,19 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
 
-# CRITICAL FIX #1 — Secret key from environment, not regenerated on restart
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-only-please-change-in-production')
-
-# CRITICAL FIX #2 — Limit upload size to 16 MB
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-
-app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'uploads')
-app.config['OUTPUT_FOLDER'] = os.environ.get('OUTPUT_FOLDER', 'output')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 app.config['ALLOWED_EXTENSIONS'] = {'csv', 'xlsx', 'png', 'jpg', 'jpeg'}
 
-# HIGH FIX #8 — CSRF protection
+# CSRF protection
 csrf = CSRFProtect(app)
 
-# ---------------------------------------------------------------------------
-# Logging (replaces print statements in this file)
-# ---------------------------------------------------------------------------
+# Logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
 )
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Create necessary folders
-# ---------------------------------------------------------------------------
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
-
-# ---------------------------------------------------------------------------
-# HIGH FIX #9 — Background cleanup of stale uploads/output (> 1 hour old)
-# ---------------------------------------------------------------------------
-CLEANUP_MAX_AGE_SECONDS = 600  # 10 minutes
-
-def _cleanup_stale_files():
-    """Delete files and empty subdirectories older than CLEANUP_MAX_AGE_SECONDS."""
-    while True:
-        time.sleep(120)  # Run every 2 minutes
-        cutoff = time.time() - CLEANUP_MAX_AGE_SECONDS
-        for folder_name in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
-            if not os.path.isdir(folder_name):
-                continue
-            for root, dirs, files in os.walk(folder_name, topdown=False):
-                for fname in files:
-                    fpath = os.path.join(root, fname)
-                    try:
-                        if os.path.getmtime(fpath) < cutoff:
-                            os.remove(fpath)
-                            logger.info("Cleanup: removed stale file %s", fpath)
-                    except OSError:
-                        pass
-                # Remove empty subdirectories
-                for dname in dirs:
-                    dpath = os.path.join(root, dname)
-                    try:
-                        if not os.listdir(dpath):
-                            os.rmdir(dpath)
-                            logger.info("Cleanup: removed empty dir %s", dpath)
-                    except OSError:
-                        pass
-            
-
-_cleanup_thread = threading.Thread(target=_cleanup_stale_files, daemon=True)
-_cleanup_thread.start()
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +55,6 @@ def index():
     return render_template('index.html')
 
 
-# HIGH FIX #10 — Health check endpoint for load balancers / monitoring
 @app.route('/health')
 def health():
     return jsonify(status='ok'), 200
@@ -117,7 +62,7 @@ def health():
 
 @app.route('/generate', methods=['POST'])
 def generate_certificates():
-    # Check if the post request has the file parts
+    # Validate files are present
     if 'namesFile' not in request.files or 'templateFile' not in request.files:
         flash('Missing required files')
         return redirect(url_for('index'))
@@ -125,7 +70,6 @@ def generate_certificates():
     names_file = request.files['namesFile']
     template_file = request.files['templateFile']
 
-    # If user does not select files, browser submits empty files
     if names_file.filename == '' or template_file.filename == '':
         flash('No selected files')
         return redirect(url_for('index'))
@@ -135,20 +79,13 @@ def generate_certificates():
         flash('Invalid file types. Allowed: CSV/XLSX for names, PNG/JPG for template.')
         return redirect(url_for('index'))
 
-    # Save the uploaded files
-    names_filename = secure_filename(names_file.filename)
-    template_filename = secure_filename(template_file.filename)
+    # Read files into memory (no disk writes)
+    names_data = names_file.read()
+    template_data = template_file.read()
 
-    names_path = os.path.join(app.config['UPLOAD_FOLDER'], names_filename)
-    template_path = os.path.join(app.config['UPLOAD_FOLDER'], template_filename)
-
-    names_file.save(names_path)
-    template_file.save(template_path)
-
-    # Get other form parameters with validation (MEDIUM FIX #12)
+    # Parse form parameters
     try:
-        font_size = int(request.form.get('fontSize', 60))
-        font_size = max(10, min(font_size, 200))
+        font_size = max(10, min(int(request.form.get('fontSize', 60)), 200))
     except (ValueError, TypeError):
         flash('Invalid font size value')
         return redirect(url_for('index'))
@@ -165,88 +102,54 @@ def generate_certificates():
     font_family = request.form.get('fontFamily', 'Arial')
     output_type = request.form.get('outputType', 'png')
 
-    # CRITICAL FIX #5 — Per-session output folder so users don't share files
-    session_id = str(uuid.uuid4())
-    output_folder = os.path.join(app.config['OUTPUT_FOLDER'], session_id)
-    os.makedirs(output_folder, exist_ok=True)
-
-    # Generate certificates
+    # Generate certificates in memory
     try:
-        create_certificates(
-            excel_file=names_path,
-            template_file=template_path,
-            output_folder=output_folder,
+        cert_results = create_certificates_in_memory(
+            names_data=names_data,
+            template_data=template_data,
             font_size=font_size,
             text_color=text_color,
             position=(position_x, position_y),
             font_family=font_family,
-            output_type=output_type
+            output_type=output_type,
         )
 
-        # Get list of generated certificates
-        certificates = [
-            cert for cert in os.listdir(output_folder)
-            if os.path.isfile(os.path.join(output_folder, cert))
-        ]
+        # Build base64 data for each certificate (for preview + individual download)
+        certificates = []
+        for filename, file_bytes in cert_results:
+            is_image = filename.lower().endswith(('.png', '.jpg', '.jpeg'))
+            mime = 'image/png' if is_image else 'application/pdf'
+            b64 = base64.b64encode(file_bytes).decode('ascii')
+            certificates.append({
+                'filename': filename,
+                'b64': b64,
+                'mime': mime,
+                'is_image': is_image,
+            })
 
-        logger.info("Generated %d certificates in session %s", len(certificates), session_id)
-        return render_template('results.html', certificates=certificates, session_id=session_id)
+        # Build the ZIP file in memory
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for filename, file_bytes in cert_results:
+                zf.writestr(filename, file_bytes)
+        zip_buf.seek(0)
+        zip_b64 = base64.b64encode(zip_buf.getvalue()).decode('ascii')
 
+        logger.info("Generated %d certificates (in-memory, Vercel-safe)", len(certificates))
+
+        return render_template(
+            'results.html',
+            certificates=certificates,
+            zip_b64=zip_b64,
+        )
+
+    except ValueError as e:
+        flash(str(e))
+        return redirect(url_for('index'))
     except Exception:
         logger.exception("Certificate generation failed")
         flash('An error occurred while generating certificates. Please try again.')
         return redirect(url_for('index'))
-
-
-# CRITICAL FIX #4 — Sanitize filenames to prevent path traversal
-@app.route('/download/<session_id>/<filename>')
-def download_file(session_id, filename):
-    session_id = secure_filename(session_id)
-    filename = secure_filename(filename)
-    if not session_id or not filename:
-        abort(404)
-    directory = os.path.join(app.config['OUTPUT_FOLDER'], session_id)
-    if not os.path.isdir(directory):
-        abort(404)
-    return send_from_directory(directory, filename, as_attachment=True)
-
-
-@app.route('/view/<session_id>/<filename>')
-def view_file(session_id, filename):
-    session_id = secure_filename(session_id)
-    filename = secure_filename(filename)
-    if not session_id or not filename:
-        abort(404)
-    directory = os.path.join(app.config['OUTPUT_FOLDER'], session_id)
-    if not os.path.isdir(directory):
-        abort(404)
-    return send_from_directory(directory, filename)
-
-
-# CRITICAL FIX #3 — Rewritten download-all using send_file with BytesIO
-@app.route('/download-all/<session_id>')
-def download_all(session_id):
-    session_id = secure_filename(session_id)
-    if not session_id:
-        abort(404)
-    directory = os.path.join(app.config['OUTPUT_FOLDER'], session_id)
-    if not os.path.isdir(directory):
-        abort(404)
-
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for filename in os.listdir(directory):
-            file_path = os.path.join(directory, filename)
-            if os.path.isfile(file_path):
-                zf.write(file_path, filename)
-
-    memory_file.seek(0)
-    return send_file(
-        memory_file,
-        mimetype='application/zip',
-        as_attachment=True,
-        download_name='certificates.zip'
-    )
 
 
 # ---------------------------------------------------------------------------
